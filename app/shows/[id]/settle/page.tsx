@@ -27,8 +27,15 @@ import {
   formatMoney,
   formatShowDateFull,
 } from "@/lib/format";
-import type { Settlement, Recoup } from "@/db/schema";
+import type { Settlement, Recoup, Expense } from "@/db/schema";
 import { Logomark } from "@/components/brand/logo";
+import { ExpensesBreakdownRow } from "./expenses-detail-modal";
+import { cn } from "@/lib/utils";
+
+function formatDeduction(amount: number): string {
+  const formatted = formatMoney(amount);
+  return formatted === "—" ? formatted : `−${formatted}`;
+}
 
 const RECOUP_LABELS: Record<Recoup["category"], string> = {
   marketing: "Marketing",
@@ -135,6 +142,7 @@ export default async function SettlePage({
             grossSoFar={grossSoFar}
             totalFees={totalFees}
             totalExpenses={totalExpenses}
+            expenses={expenses}
             ticketCount={ticketSales.reduce((s, t) => s + (t.qty ?? 0), 0)}
             expenseRowCount={expenses.length}
           />
@@ -362,6 +370,7 @@ function UnsupportedDeal({
   grossSoFar,
   totalFees,
   totalExpenses,
+  expenses,
   ticketCount,
   expenseRowCount,
 }: {
@@ -373,6 +382,7 @@ function UnsupportedDeal({
   grossSoFar: number;
   totalFees: number;
   totalExpenses: number;
+  expenses: Expense[];
   ticketCount: number;
   expenseRowCount: number;
 }) {
@@ -453,6 +463,17 @@ function UnsupportedDeal({
         </CardContent>
       </Card>
 
+      {dealType === "vs" && deal && (
+        <VsSettlementBreakdown
+          grossSoFar={grossSoFar}
+          totalFees={totalFees}
+          totalExpenses={totalExpenses}
+          expenses={expenses}
+          deal={deal}
+          settlement={existingSettlement}
+        />
+      )}
+
       {existingSettlement?.totalToArtist != null && (
         <Card
           accent={existingSettlement.status === "disputed" ? "rose" : "brand"}
@@ -482,6 +503,180 @@ function UnsupportedDeal({
         </Card>
       )}
     </>
+  );
+}
+
+function hasDealBonuses(bonusesJson: string | null): boolean {
+  if (!bonusesJson) return false;
+  try {
+    const parsed = JSON.parse(bonusesJson);
+    return Array.isArray(parsed) && parsed.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function VsSettlementBreakdown({
+  grossSoFar,
+  totalFees,
+  totalExpenses,
+  expenses,
+  deal,
+  settlement,
+}: {
+  grossSoFar: number;
+  totalFees: number;
+  totalExpenses: number;
+  expenses: Expense[];
+  deal: NonNullable<
+    NonNullable<Awaited<ReturnType<typeof getShowById>>>["deal"]
+  >;
+  settlement: NonNullable<
+    Awaited<ReturnType<typeof getShowById>>
+  >["settlement"];
+}) {
+  const netBoxOffice = grossSoFar - totalFees;
+  const expenseCap = deal.expenseCap;
+  const expensesApplied =
+    expenseCap != null
+      ? Math.min(totalExpenses, expenseCap)
+      : totalExpenses;
+  const netAfterExpenses = netBoxOffice - expensesApplied;
+  const guarantee = deal.guaranteeAmount ?? 0;
+  const pct = deal.percentage ?? 0;
+  const percentagePayout = pct * netAfterExpenses;
+  const artistReceives = Math.max(guarantee, percentagePayout);
+  const pctLabel = `${(pct * 100).toFixed(0)}% of net`;
+
+  const expenseLabel =
+    expenseCap != null
+      ? `Expenses (capped at ${formatMoney(expenseCap)})`
+      : "Expenses";
+
+  const showBonusWarning =
+    hasDealBonuses(deal.bonusesJson) &&
+    settlement?.totalToArtist != null &&
+    settlement.totalToArtist !== artistReceives;
+
+  return (
+    <Card accent="brand">
+      <CardHeader>
+        <div>
+          <CardTitle>Settlement Breakdown</CardTitle>
+          <CardDescription>
+            Guarantee vs. percentage of net — artist receives whichever is
+            higher.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <BreakdownRow label="Gross box office" value={formatMoney(grossSoFar)} />
+        <BreakdownRow
+          label="Platform fees"
+          amount={totalFees}
+          variant="deduction"
+        />
+        <BreakdownRow
+          label="Net box office"
+          value={formatMoney(netBoxOffice)}
+          variant="subtotal"
+        />
+        <ExpensesBreakdownRow
+          label={expenseLabel}
+          amount={expensesApplied}
+          expenses={expenses}
+          expenseCap={expenseCap}
+          totalExpenses={totalExpenses}
+        />
+        <BreakdownRow
+          label="Net after expenses"
+          value={formatMoney(netAfterExpenses)}
+          variant="subtotal"
+        />
+
+        <div className="pt-3" />
+
+        <BreakdownRow
+          label="Guarantee"
+          value={
+            deal.guaranteeAmount != null
+              ? formatMoney(deal.guaranteeAmount)
+              : "—"
+          }
+        />
+        <BreakdownRow
+          label={pctLabel}
+          value={formatMoney(percentagePayout)}
+        />
+        <BreakdownRow
+          label="Artist receives"
+          value={formatMoney(artistReceives)}
+          variant="bold"
+        />
+        {showBonusWarning && (
+          <div className="pt-4">
+            <div className="rounded-lg bg-amber-50/50 ring-1 ring-amber-200/60 px-4 py-3 flex gap-2.5">
+              <span className="text-[13px] shrink-0" aria-hidden>
+                ⚠️
+              </span>
+              <p className="text-[12.5px] text-amber-800 leading-relaxed">
+                This deal includes bonus structures that may affect the final
+                amount. Review deal notes for the full calculation.
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BreakdownRow({
+  label,
+  value,
+  amount,
+  variant = "default",
+}: {
+  label: string;
+  value?: string;
+  amount?: number;
+  variant?: "default" | "deduction" | "subtotal" | "bold";
+}) {
+  const displayValue =
+    variant === "deduction" && amount != null
+      ? formatDeduction(amount)
+      : (value ?? (amount != null ? formatMoney(amount) : "—"));
+
+  return (
+    <div
+      className={cn(
+        "flex items-baseline justify-between py-2.5",
+        variant === "subtotal" && "border-t border-ink-200/70 pt-3 mt-0.5",
+      )}
+    >
+      <div
+        className={cn(
+          "text-[13px]",
+          variant === "bold" || variant === "subtotal"
+            ? "text-ink-900"
+            : "text-ink-600",
+          variant === "bold" && "font-semibold",
+        )}
+      >
+        {label}
+      </div>
+      <div
+        className={cn(
+          "font-mono tabular",
+          variant === "deduction" && "text-[13.5px] text-rose-700",
+          variant === "subtotal" && "text-[13.5px] font-medium text-ink-900",
+          variant === "bold" && "text-[18px] font-semibold text-ink-900",
+          variant === "default" && "text-[13.5px] text-ink-900",
+        )}
+      >
+        {displayValue}
+      </div>
+    </div>
   );
 }
 

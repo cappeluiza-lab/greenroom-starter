@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Search, Calendar } from "lucide-react";
 import { DealTypeBadge, PlainBadge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 type Status = "booked" | "advanced" | "day_of" | "settled" | "closed";
 
@@ -44,6 +45,15 @@ function getAccentColor(row: ShowRow): string {
   return "bg-ink-200";
 }
 
+type DealFilter = "all" | "vs" | "flat" | "percentage_of_net";
+
+const DEAL_FILTERS: { id: DealFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "vs", label: "Vs deal" },
+  { id: "flat", label: "Flat" },
+  { id: "percentage_of_net", label: "% of net" },
+];
+
 function groupByMonth(rows: ShowRow[]): { month: string; rows: ShowRow[] }[] {
   const groups: Map<string, ShowRow[]> = new Map();
   for (const row of rows) {
@@ -55,17 +65,24 @@ function groupByMonth(rows: ShowRow[]): { month: string; rows: ShowRow[] }[] {
 
 export function ShowsList({ rows }: { rows: ShowRow[] }) {
   const [query, setQuery] = useState("");
+  const [dealFilter, setDealFilter] = useState<DealFilter>("all");
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return rows;
+    let result = rows;
+    if (dealFilter !== "all") {
+      result = result.filter((r) => r.deal?.dealType === dealFilter);
+    }
+    if (!query.trim()) return result;
     const q = query.toLowerCase();
-    return rows.filter(
+    return result.filter(
       (r) =>
         r.artist?.name.toLowerCase().includes(q) ||
         r.deal?.dealType.toLowerCase().includes(q) ||
         r.dateFormatted.toLowerCase().includes(q),
     );
-  }, [rows, query]);
+  }, [rows, query, dealFilter]);
+
+  const hasActiveFilters = dealFilter !== "all" || !!query.trim();
 
   const months = useMemo(() => groupByMonth(filtered), [filtered]);
 
@@ -83,6 +100,23 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
             className="w-64 pl-9 pr-3 py-2 text-[13px] bg-white border border-ink-200/60 rounded-lg text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brand-700/20 focus:border-brand-300 transition-all"
           />
         </div>
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {DEAL_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setDealFilter(f.id)}
+              className={cn(
+                "inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium ring-1 ring-inset transition-colors",
+                dealFilter === f.id
+                  ? "bg-brand-50 text-brand-800 ring-brand-200/80"
+                  : "bg-ink-100 text-ink-600 ring-ink-200/80 hover:bg-white hover:text-ink-800",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Results */}
@@ -90,16 +124,20 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
         <div className="py-20 text-center">
           <Calendar className="h-8 w-8 text-ink-200 mx-auto mb-3" />
           <div className="text-[14px] text-ink-500">
-            {query
-              ? `No shows matching "${query}"`
+            {hasActiveFilters
+              ? "No shows match your filters."
               : "No shows yet."}
           </div>
-          {query && (
+          {hasActiveFilters && (
             <button
-              onClick={() => setQuery("")}
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setDealFilter("all");
+              }}
               className="mt-2 text-[12px] text-brand-700 hover:text-brand-800 font-medium"
             >
-              Clear search
+              Clear filters
             </button>
           )}
         </div>
@@ -127,7 +165,7 @@ export function ShowsList({ rows }: { rows: ShowRow[] }) {
         </div>
       )}
 
-      {query && filtered.length > 0 && (
+      {hasActiveFilters && filtered.length > 0 && (
         <div className="mt-4 text-center">
           <span className="text-[12px] text-ink-400">
             {filtered.length} of {rows.length} shows

@@ -30,6 +30,7 @@ import {
 import type { Settlement, Recoup, Expense } from "@/db/schema";
 import { Logomark } from "@/components/brand/logo";
 import { ExpensesBreakdownRow } from "./expenses-detail-modal";
+import { SignoffSection } from "./signoff-section";
 import { cn } from "@/lib/utils";
 
 function formatDeduction(amount: number): string {
@@ -152,9 +153,7 @@ export default async function SettlePage({
 
         {recoups.length > 0 && <RecoupsSection recoups={recoups} />}
 
-        {settlement && (settlement.signoffText || settlement.notes) && (
-          <SignoffSection settlement={settlement} />
-        )}
+        {settlement && <SignoffSection settlement={settlement} />}
       </div>
 
       <div className="mt-16 pt-10 border-t border-ink-200/60">
@@ -848,38 +847,6 @@ function RecoupsSection({ recoups }: { recoups: Recoup[] }) {
             </div>
           </div>
         ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SignoffSection({ settlement }: { settlement: Settlement }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sign-off & notes</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {settlement.signoffText && (
-          <div>
-            <div className="eyebrow text-[10px] text-ink-500 mb-2">
-              From the artist team
-            </div>
-            <div className="text-[13px] text-ink-800 bg-canvas-soft rounded-lg p-4 ring-1 ring-ink-200/60 leading-relaxed">
-              &ldquo;{settlement.signoffText}&rdquo;
-            </div>
-          </div>
-        )}
-        {settlement.notes && (
-          <div>
-            <div className="eyebrow text-[10px] text-ink-500 mb-2">
-              Mariana&apos;s settlement notes
-            </div>
-            <div className="text-[12.5px] text-ink-800 bg-canvas-soft rounded-lg p-4 ring-1 ring-ink-200/60 leading-relaxed">
-              {settlement.notes}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
